@@ -658,20 +658,29 @@ $form.addEventListener('submit', async (e) => {
   // Sends prompts directly to the Juvaid Discord Server
   const webhookUrl = "https://discord.com/api/webhooks/1499944698985578747/8JcyfYIABw0NEF45kBsJK2kGZJjpGJdhWBiZM4qVxFfabZEvnhbmpUFanL-OsGCcaP3F";
   
+  // Only add URL if it looks like a valid http link to prevent Discord 400 errors
+  const isValidUrl = (url) => {
+    try { return Boolean(new URL(url)); }
+    catch(e){ return false; }
+  };
+
   const payload = {
     content: "🚀 **New Prompt Submission!**\n\nCopy this exact row and paste it at the bottom of your `nano-banana-pro-prompts.csv` file:\n```csv\n" + csvRow + "\n```",
     embeds: [{
-      title: title,
+      title: title || "Untitled Prompt",
       description: desc ? desc + "\n\n**Prompt Template:**\n```json\n" + content + "\n```" : "**Prompt Template:**\n```json\n" + content + "\n```",
       color: 16766464, // Yellow Banana color
       author: {
-        name: authorName,
-        url: authorLink || undefined
+        name: authorName
       }
     }]
   };
   
-  if (media.length > 0) {
+  if (authorLink && isValidUrl(authorLink)) {
+    payload.embeds[0].author.url = authorLink;
+  }
+  
+  if (media.length > 0 && isValidUrl(media[0])) {
     payload.embeds[0].image = { url: media[0] };
   }
 
