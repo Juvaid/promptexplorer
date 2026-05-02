@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://juvaid-prompt-lib.pages.dev/sitemap.xml
