@@ -3,126 +3,342 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Juvaid Prompt Lib — Ultimate AI Prompt Explorer</title>
-  <meta name="description" content="Discover, search, and customize over 12,000 premium AI image prompts. Features a blazing fast virtual-scrolling interface, dynamic template arguments, and 1-click copy." />
-  <meta name="keywords" content="AI prompts, Midjourney, Stable Diffusion, DALL-E, prompt engineering, AI image generation, prompt templates, prompt explorer" />
-  <meta name="robots" content="index, follow" />
-  <meta name="theme-color" content="#121212" />
-
-  <!-- Open Graph / Facebook -->
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="Juvaid Prompt Lib — Ultimate AI Prompt Explorer" />
-  <meta property="og:description" content="Discover, search, and customize over 12,000 premium AI image prompts instantly. A blazingly fast library for AI artists." />
-  <meta property="og:image" content="https://ai.juvaid.in/og-image.jpg" />
-  <meta property="og:url" content="https://ai.juvaid.in/" />
-
-  <!-- Twitter -->
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Juvaid Prompt Lib — Ultimate AI Prompt Explorer" />
-  <meta name="twitter:description" content="Discover, search, and customize over 12,000 premium AI image prompts instantly. A blazingly fast library for AI artists." />
-  <meta name="twitter:image" content="https://ai.juvaid.in/og-image.jpg" />
-
-  <!-- Canonical URL -->
-  <link rel="canonical" href="https://ai.juvaid.in/" />
-
-  <!-- Favicons -->
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-
-  <!-- Fonts & CSS -->
+  <title>Juvaid Prompt Lib — Grid Feed</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Feed-specific overrides for Pinterest grid */
+    .cat-tabs {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+    .cat-tabs::-webkit-scrollbar { display: none; }
+    .cat-tab {
+      padding: 8px 16px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .cat-tab:hover { border-color: var(--text-faint); }
+    .cat-tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+      font-weight: 700;
+    }
+    .feed-container {
+
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    #gridContainer {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      width: 100%;
+    }
+
+    .grid-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .feed-card {
+      width: 100%;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+      transition: transform 0.3s ease, border-color 0.3s ease;
+      /* removed break-inside: avoid since we use flex columns now */
+    }
+
+    .feed-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 15px 45px rgba(0,0,0,0.6);
+      transform: scale(1.02);
+    }
+    .feed-card img {
+      width: 100%;
+      display: block;
+      transition: filter 0.3s ease;
+    }
+    .feed-card:hover img {
+      filter: brightness(0.5) blur(2px);
+    }
+    .feed-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      padding: 24px;
+      background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 60%);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+    .feed-card:hover .feed-overlay {
+      opacity: 1;
+    }
+    .feed-card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+      line-height: 1.3;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+    .author-badge {
+      font-size: 0.75rem;
+      color: var(--accent);
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+
+    /* Modal for prompt detail in feed view */
+    .feed-detail-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(8px);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+    }
+    .feed-detail-modal {
+      background: var(--bg1);
+      width: 100%;
+      max-width: 1000px;
+      max-height: 90vh;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      display: flex;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+    }
+    .feed-detail-left {
+      flex: 1.5;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-right: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+    .feed-detail-left-bg {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-size: cover;
+      background-position: center;
+      filter: blur(40px) brightness(0.4);
+      transform: scale(1.1);
+      z-index: 0;
+    }
+    .feed-detail-left img {
+      position: relative;
+      z-index: 1;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      box-shadow: 0 0 50px rgba(0,0,0,0.8);
+    }
+
+    /* Skeleton Loaders */
+    .skeleton-card {
+      break-inside: avoid;
+      display: inline-block;
+      width: 100%;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      margin-bottom: 20px;
+      overflow: hidden;
+      position: relative;
+    }
+    .skeleton-img {
+      width: 100%;
+      background: var(--bg3);
+      position: relative;
+      overflow: hidden;
+    }
+    .skeleton-shimmer {
+      position: absolute;
+      top: 0; left: -100%; width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+      animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer {
+      100% { left: 100%; }
+    }
+    .skeleton-overlay {
+      position: absolute;
+      bottom: 20px; left: 20px;
+      width: 60%; height: 12px;
+      background: var(--bg3);
+      border-radius: 4px;
+    }
+
+    .feed-detail-right {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden; /* Header and footer stay, middle scrolls */
+    }
+    .feed-detail-header {
+      padding: 32px 32px 20px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+    }
+    .feed-detail-body {
+      flex: 1;
+      padding: 0 32px;
+      overflow-y: auto;
+    }
+    .feed-detail-footer {
+      padding: 24px 32px 32px 32px;
+      border-top: 1px solid var(--border);
+      background: var(--bg1);
+    }
+    .prompt-box {
+      background: var(--bg3);
+      padding: 20px;
+      border-radius: var(--radius-md);
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      position: relative;
+      border: 1px solid var(--border);
+    }
+    .prompt-box.collapsed {
+      max-height: 200px;
+      overflow: hidden;
+      mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+    }
+    .expand-btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-top: none;
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 0 0 var(--radius-md) var(--radius-md);
+      text-align: center;
+    }
+    .expand-btn:hover { background: var(--accent-dim); }
+
+  </style>
 </head>
 <body>
-  <!-- Header -->
   <header class="header">
     <div class="header-inner">
       <div class="logo">
         <span class="logo-icon">🍌</span>
         <div class="logo-text">
           <span class="logo-title">Juvaid Prompt Lib</span>
-          <span class="logo-sub">Prompt Explorer</span>
+          <span class="logo-sub">Prompt Feed</span>
         </div>
       </div>
-      <div class="header-stats" id="headerStats" style="display: flex; align-items: center; gap: 12px;">
-        <span class="stat-badge"><span id="totalCount">—</span> prompts</span>
-        <span class="stat-badge" id="filteredBadge" style="display:none;"></span>
-        <button class="btn" id="newPromptBtn" style="font-size: 0.75rem; padding: 4px 10px; background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 4px; cursor: pointer;">+ Submit Prompt</button>
+
+      <div class="search-wrap header-search">
+        <svg class="search-icon" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M14 14L18 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search prompts..." />
       </div>
+
+      <div class="header-actions">
+        <a href="list.html" class="view-btn" title="List View">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+        </a>
+        <button class="view-btn active" title="Grid View">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+        </button>
+        <button class="btn btn-primary" id="newPromptBtn" style="padding: 6px 12px; font-size: 0.8rem; margin-left: 8px;">+ Submit</button>
+      </div>
+
     </div>
   </header>
 
-  <!-- Search & Filters -->
   <div class="toolbar">
-    <div class="search-wrap">
-      <svg class="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.5"/>
-        <path d="M14 14L18 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
-      <input type="text" id="searchInput" class="search-input" placeholder="Search prompts by title, description, or content…" autocomplete="off" />
-      <button class="search-clear" id="searchClear" title="Clear search" aria-label="Clear search">✕</button>
-    </div>
     <div class="filter-row">
-      <select class="filter-select" id="authorFilter">
-        <option value="">All Authors</option>
-      </select>
+
+      <div class="cat-tabs" id="categoryFilter">
+        <button class="cat-tab active" data-cat="">All</button>
+        <button class="cat-tab" data-cat="product">Product</button>
+        <button class="cat-tab" data-cat="marketing">Marketing</button>
+        <button class="cat-tab" data-cat="youtube">YouTube</button>
+        <button class="cat-tab" data-cat="social">Social Media</button>
+        <button class="cat-tab" data-cat="creative">Creative</button>
+      </div>
+
       <select class="filter-select" id="sortSelect">
         <option value="newest">Newest First</option>
-        <option value="oldest">Oldest First</option>
+        <option value="random">Random Discovery</option>
         <option value="title">A → Z</option>
       </select>
-      <label class="toggle-label" title="Only show prompts with images">
-        <input type="checkbox" id="hasImagesFilter" />
-        <span class="toggle-track"><span class="toggle-thumb"></span></span>
-        Has images
-      </label>
+
     </div>
   </div>
 
-  <!-- Main layout -->
-  <div class="layout">
-    <!-- Prompt list -->
-    <aside class="sidebar">
-      <div class="sidebar-inner" id="promptList">
-        <div id="loader" class="file-picker-state">
-          <div class="loader-spinner" id="bootSpinner"></div>
-          <p style="color:var(--text-muted);font-size:.85rem">Loading data…</p>
-          <div id="pickerFallback" style="display:none;width:100%;text-align:center">
-            <div class="fp-icon">🍌</div>
-            <h3>First-time setup</h3>
-            <p>Run <code>node build.js</code> once to skip this step forever.<br>Or pick the CSV manually below.</p>
-            <label class="fp-btn" for="csvFileInput" style="margin-top:12px">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0-8L5 5m3-3l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="2" y="11" width="12" height="3" rx="1.5" stroke="currentColor" stroke-width="1.3"/></svg>
-              Choose CSV File
-            </label>
-            <input type="file" id="csvFileInput" accept=".csv" style="display:none" />
-          </div>
-        </div>
-        <!-- Virtual scroll spacers -->
-        <div id="vTop" style="height:0"></div>
-        <!-- cards rendered between vTop and vBottom by JS -->
-        <div id="vBottom" style="height:0"></div>
-      </div>
-    </aside>
 
-    <!-- Detail panel -->
-    <main class="detail-panel" id="detailPanel">
-      <div class="detail-empty" id="detailEmpty">
-        <div class="empty-icon">✦</div>
-        <h2>Select a prompt</h2>
-        <p>Browse the list on the left and click any prompt to explore it, customize its arguments, and copy the final text.</p>
-      </div>
-      <div class="detail-content" id="detailContent" style="display:none;">
-        <!-- Filled dynamically -->
-      </div>
-    </main>
+  <div class="feed-container">
+    <div id="gridContainer" class="grid-layout">
+      <!-- Cards rendered here -->
+    </div>
+    <div id="loader" style="text-align:center; padding: 40px; color: var(--text-muted);">
+      Loading feed...
+    </div>
   </div>
 
-  <!-- Toast notification -->
-  <div class="toast" id="toast"></div>
+  <!-- Detail Modal -->
+  <div class="feed-detail-overlay" id="detailOverlay">
+    <div class="feed-detail-modal">
+      <div class="feed-detail-left" id="detailImageArea">
+        <!-- Main image -->
+      </div>
+      <div class="feed-detail-right">
+        <div class="feed-detail-header">
+          <h2 id="detailTitle" style="font-size: 1.5rem; margin:0;"></h2>
+          <button id="closeDetail" style="background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer;">✕</button>
+        </div>
+        <div class="feed-detail-body">
+          <div id="detailMeta" style="margin-bottom: 24px;"></div>
+          <div id="detailContent"></div>
+        </div>
+        <div class="feed-detail-footer">
+           <button class="copy-btn" id="copyBtn" style="width:100%; justify-content:center;">Copy Prompt</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- New Prompt Modal -->
   <div class="modal-overlay" id="promptModal" style="display: none;">
     <div class="modal-content">
@@ -166,23 +382,11 @@
     </div>
   </div>
 
+  <div class="toast" id="toast"></div>
 
-  <!-- Pre-built data (generated by: node build.js) -->
-  <!-- If data.js exists it sets window.PROMPT_DATA and app auto-loads -->
-  <script>
-    // Dynamically try to load data.js — works on file:// because <script> tags are not CORS-blocked
-    (function() {
-      var s = document.createElement('script');
-      s.src = 'data.js';
-      s.onload  = function() { /* app.js will detect window.PROMPT_DATA */ };
-      s.onerror = function() {
-        // data.js missing → show the manual file picker
-        document.getElementById('bootSpinner').style.display = 'none';
-        document.getElementById('pickerFallback').style.display = 'block';
-      };
-      document.head.appendChild(s);
-    })();
-  </script>
+  <script src="data.js"></script>
   <script src="app.js"></script>
 </body>
+
+
 </html>

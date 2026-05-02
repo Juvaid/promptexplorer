@@ -1,717 +1,390 @@
-/* ============================================================
-   Nano Banana Pro — Prompt Explorer  |  Virtual scroll edition
-   ============================================================ */
+/**
+ * Feed View Logic
+ * Pinterest-style grid for Juvaid Prompt Lib
+ */
 
-// ─ Virtual scroll constants ────────────────────────────────────
-const CARD_H   = 120;  // px — MUST match .prompt-card height in CSS
-const OVERSCAN = 6;    // extra cards rendered above + below viewport
+let allPrompts = [];
+let filtered = [];
+let page = 1;
+const perPage = 20;
+let isLoading = false;
 
-// ─── State ───────────────────────────────────────────────────
-let allPrompts   = [];
-let filtered     = [];
-let vsStart      = 0;  // first rendered index in virtual list
-let vsEnd        = 0;  // last rendered index
-let activeId     = null;
-let currentIndex = -1;
-let rawViewMode  = false;
 
-// ─── DOM refs ─────────────────────────────────────────────────
-const $list      = document.getElementById('promptList');
-const $vTop      = document.getElementById('vTop');
-const $vBottom   = document.getElementById('vBottom');
-const $detail    = document.getElementById('detailContent');
-const $empty     = document.getElementById('detailEmpty');
-const $search    = document.getElementById('searchInput');
-const $clear     = document.getElementById('searchClear');
-const $author    = document.getElementById('authorFilter');
-const $sort      = document.getElementById('sortSelect');
-const $hasImg    = document.getElementById('hasImagesFilter');
-const $total     = document.getElementById('totalCount');
-const $filtBadge = document.getElementById('filteredBadge');
-const $toast     = document.getElementById('toast');
+const $grid = document.getElementById('gridContainer');
+const $loader = document.getElementById('loader');
+const $searchInput = document.getElementById('searchInput');
+const $sortSelect = document.getElementById('sortSelect');
+const $overlay = document.getElementById('detailOverlay');
+const $detailImage = document.getElementById('detailImageArea');
+const $detailTitle = document.getElementById('detailTitle');
+const $detailMeta = document.getElementById('detailMeta');
+const $detailContent = document.getElementById('detailContent');
+const $copyBtn = document.getElementById('copyBtn');
 
-// Modal refs
-const $modal     = document.getElementById('promptModal');
-const $newBtn    = document.getElementById('newPromptBtn');
-const $closeBtn  = document.getElementById('modalClose');
-const $cancelBtn = document.getElementById('modalCancel');
-const $form      = document.getElementById('newPromptForm');
 
-// ─── CSV Parser ───────────────────────────────────────────────
-function parseCSV(text) {
-  const rows = [];
-  const n = text.length;
-  let i = 0;
+// Init with polling for data.js
+function init() {
+  let attempts = 0;
+  const poll = setInterval(() => {
+    attempts++;
+    if (window.PROMPT_DATA) {
+      clearInterval(poll);
+      // Shuffle initially for variety on every refresh
+      allPrompts = [...window.PROMPT_DATA].sort(() => Math.random() - 0.5);
+      filtered = [...allPrompts];
+      renderFeed();
+    } else if (attempts > 50) {
 
-  function parseField() {
-    if (text[i] === '"') {
-      i++;
-      let val = '';
-      while (i < n) {
-        if (text[i] === '"') {
-          if (text[i + 1] === '"') { val += '"'; i += 2; }
-          else { i++; break; }
-        } else { val += text[i++]; }
-      }
-      return val;
-    } else {
-      let val = '';
-      while (i < n && text[i] !== ',' && text[i] !== '\n' && text[i] !== '\r')
-        val += text[i++];
-      return val;
+      clearInterval(poll);
+      $loader.textContent = "Data not found. Please run build.js or use List View.";
     }
-  }
-
-  function parseRow() {
-    const fields = [];
-    while (i < n) {
-      fields.push(parseField());
-      if (text[i] === ',') { i++; continue; }
-      if (text[i] === '\r') i++;
-      if (text[i] === '\n') { i++; break; }
-      if (i >= n) break;
-    }
-    return fields;
-  }
-
-  const headers = parseRow();
-  const hIdx = {};
-  headers.forEach((h, idx) => { hIdx[h.trim()] = idx; });
-
-  while (i < n) {
-    if (text[i] === '\r' || text[i] === '\n') { i++; continue; }
-    const fields = parseRow();
-    if (fields.length < 2) continue;
-    const get = (k) => decodeHtml(fields[hIdx[k]] || '');
-
-    let author = { name: '', link: '' };
-    try { const r = fields[hIdx['author']] || ''; if (r) author = JSON.parse(r); } catch {}
-
-    let media = [];
-    try { const r = get('sourceMedia'); if (r) media = JSON.parse(r); } catch {}
-
-    rows.push({
-      id:          get('id'),
-      title:       get('title'),
-      description: get('description'),
-      content:     get('content'),
-      sourceLink:  get('sourceLink'),
-      publishedAt: get('sourcePublishedAt'),
-      author,
-      media,
-    });
-  }
-  return rows;
+  }, 100);
 }
 
-// ─── HTML entity decoder ─────────────────────────────────────
-function decodeHtml(str) {
-  if (!str || !str.includes('&')) return str;
-  const el = document.createElement('textarea');
-  el.innerHTML = str;
-  return el.value;
-}
 
-// ─── Argument extraction ──────────────────────────────────────
-function extractArguments(content) {
-  const regex = /\{argument\s+name="([^"]+)"\s+default="((?:[^"\\]|\\.|"")*)"\}/g;
-  const args = [];
-  const seen = new Set();
-  let m;
-  while ((m = regex.exec(content)) !== null) {
-    if (!seen.has(m[1])) {
-      seen.add(m[1]);
-      args.push({ name: m[1], default: m[2].replace(/""/g, '"') });
-    }
-  }
-  return args;
-}
+$sortSelect.addEventListener('change', () => {
+  sortPrompts();
+  renderFeed();
+});
 
-function expandContent(content, values) {
-  return content.replace(
-    /\{argument\s+name="([^"]+)"\s+default="((?:[^"\\]|\\.)*)"\}/g,
-    (match, name) => {
-      const val = values[name];
-      if (val !== undefined && val.trim() !== '') return val;
-      const m2 = match.match(/default="((?:[^"\\]|\\.)*)"/);
-      return m2 ? m2[1].replace(/""/g, '"') : match;
-    }
-  );
-}
-
-// ─── Filtering & Sorting ──────────────────────────────────────
-function applyFilters() {
-  const query  = $search.value.trim().toLowerCase();
-  const author = $author.value;
-  const hasImg = $hasImg.checked;
-  const sort   = $sort.value;
-
-  filtered = allPrompts.filter(p => {
-    if (author && p.author.name !== author) return false;
-    if (hasImg && p.media.length === 0) return false;
-    if (query) {
-      const haystack = (p.title + ' ' + p.description + ' ' + p.content).toLowerCase();
-      if (!haystack.includes(query)) return false;
-    }
-    return true;
-  });
-
-  if (sort === 'oldest') filtered = [...filtered].reverse();
-  else if (sort === 'title') filtered = [...filtered].sort((a, b) => a.title.localeCompare(b.title));
-
-  updateBadge();
-  render();
-}
-
-function updateBadge() {
-  if (filtered.length < allPrompts.length) {
-    $filtBadge.style.display = '';
-    $filtBadge.textContent = `${filtered.length.toLocaleString()} results`;
-  } else {
-    $filtBadge.style.display = 'none';
-  }
-}
-
-// ─── Category inference ───────────────────────────────────────
-const CATEGORIES = [
-  { test: /\banime\b|manga|chibi|kawaii|illustration|cartoon/i,  label: 'Anime',    cls: 'cat-anime'    },
-  { test: /\b3d\b|game char|character|cgi|render/i,              label: '3D',       cls: 'cat-3d'       },
-  { test: /fashion|editorial|magazine|vogue|lookbook/i,          label: 'Fashion',  cls: 'cat-fashion'  },
-  { test: /fitness|gym|athletic|sport|workout/i,                 label: 'Fitness',  cls: 'cat-fitness'  },
-  { test: /poster|advertisement|commercial|campaign/i,           label: 'Ad',       cls: 'cat-ad'       },
-  { test: /surreal|fantasy|mystical|magical|mythical/i,          label: 'Fantasy',  cls: 'cat-fantasy'  },
-  { test: /landscape|nature|forest|jungle|mountain|wildlife/i,   label: 'Nature',   cls: 'cat-nature'   },
-  { test: /street|urban|city|graffiti/i,                         label: 'Street',   cls: 'cat-street'   },
-  { test: /portrait|selfie|headshot|close.?up/i,                 label: 'Portrait', cls: 'cat-portrait' },
-  { test: /product|jewelry|watch|luxury|brand/i,                 label: 'Luxury',   cls: 'cat-luxury'   },
-];
-function inferCategory(p) {
-  const text = p.title + ' ' + p.description;
-  for (const cat of CATEGORIES) { if (cat.test.test(text)) return cat; }
-  return { label: 'Prompt', cls: 'cat-default' };
-}
-
-// ─── Card builder (compact row, image-right) ────────────────────────────────
-function buildCard(p) {
-  const cat   = inferCategory(p);
-  const date  = p.publishedAt
-    ? new Date(p.publishedAt).toLocaleDateString('en', { month: 'short', day: 'numeric' })
-    : '';
-  const thumb = p.media[0] || null;
-
-  const card = document.createElement('div');
-  card.className = 'prompt-card' + (p.id === activeId ? ' active' : '');
-  card.dataset.id = p.id;
-
-  card.innerHTML = `
-    <div class="card-left">
-      <div class="card-top-row">
-        <span class="cat-chip ${cat.cls}">${cat.label}</span>
-        <span class="card-date">${date}</span>
+function showSkeletons() {
+  const count = 8;
+  for (let i = 0; i < count; i++) {
+    const skel = document.createElement('div');
+    skel.className = 'skeleton-card js-skeleton';
+    // Random height between 250 and 450
+    const h = Math.floor(Math.random() * 200) + 250;
+    skel.innerHTML = `
+      <div class="skeleton-img" style="height:${h}px">
+        <div class="skeleton-shimmer"></div>
+        <div class="skeleton-overlay"></div>
       </div>
-      <div class="card-title">${escHtml(p.title)}</div>
-      <div class="card-desc">${escHtml(p.description)}</div>
-      <div class="card-meta">
-        <span class="card-author">${escHtml(p.author.name || '—')}</span>
-        ${p.media.length > 1 ? `<span class="cbadge">🖼 ${p.media.length}</span>` : ''}
-      </div>
-    </div>
-    <div class="card-img" aria-hidden="true"${thumb ? ` style="background-image:url('${escAttr(thumb)}')"` : ''}></div>`;
-
-  card.addEventListener('click', () => openPrompt(p));
-  return card;
+    `;
+    $grid.appendChild(skel);
+  }
 }
 
-// ─── Virtual scroll ────────────────────────────────────────────────
-function renderVirtual() {
-  if (!filtered.length || !$vTop || !$vBottom) return;
-  const scrollTop = $list.scrollTop;
-  const viewH     = $list.clientHeight || 500;
-
-  const newStart = Math.max(0, Math.floor(scrollTop / CARD_H) - OVERSCAN);
-  const newEnd   = Math.min(filtered.length - 1,
-                    Math.ceil((scrollTop + viewH) / CARD_H) + OVERSCAN);
-
-  if (newStart === vsStart && newEnd === vsEnd) return;
-  vsStart = newStart;
-  vsEnd   = newEnd;
-
-  // Spacer heights = cards not in DOM
-  $vTop.style.height    = vsStart * CARD_H + 'px';
-  $vBottom.style.height = Math.max(0, (filtered.length - vsEnd - 1)) * CARD_H + 'px';
-
-  // Remove old cards (between spacers)
-  const toRemove = [];
-  let node = $vTop.nextSibling;
-  while (node && node !== $vBottom) { toRemove.push(node); node = node.nextSibling; }
-  toRemove.forEach(el => el.remove());
-
-  // Insert visible slice
-  const frag = document.createDocumentFragment();
-  for (let i = vsStart; i <= vsEnd; i++) frag.appendChild(buildCard(filtered[i]));
-  $list.insertBefore(frag, $vBottom);
+function hideSkeletons() {
+  const skels = document.querySelectorAll('.js-skeleton');
+  skels.forEach(s => s.remove());
 }
 
-function render() {
-  vsStart = 0; vsEnd = 0;
-  $list.scrollTop = 0;
+let $cols = [];
+function setupColumns() {
+  $grid.innerHTML = '';
+  $cols = [];
+  let numCols = 4;
+  if (window.innerWidth <= 600) numCols = 1;
+  else if (window.innerWidth <= 900) numCols = 2;
+  else if (window.innerWidth <= 1400) numCols = 3;
 
-  // Clear everything between spacers
-  const toRemove = [];
-  let node = $vTop ? $vTop.nextSibling : null;
-  while (node && node !== $vBottom) { toRemove.push(node); node = node.nextSibling; }
-  toRemove.forEach(el => el.remove());
+  for (let i = 0; i < numCols; i++) {
+    const col = document.createElement('div');
+    col.className = 'grid-col';
+    $grid.appendChild(col);
+    $cols.push(col);
+  }
+}
 
-  if (!$vTop || !$vBottom) return;
+function renderFeed(append = false) {
+  if (isLoading) return;
+  isLoading = true;
 
-  if (filtered.length === 0) {
-    $vTop.style.height = $vBottom.style.height = '0px';
-    const msg = document.createElement('div');
-    msg.className = 'no-results';
-    msg.innerHTML = '<h3>No prompts found</h3><p>Try a different search or clear filters.</p>';
-    $list.insertBefore(msg, $vBottom);
+  if (!append) {
+    setupColumns();
+    page = 1;
+  }
+
+  const start = (page - 1) * perPage;
+  const end = start + perPage;
+  const chunk = filtered.slice(start, end);
+
+  if (chunk.length === 0 && page === 1) {
+    $grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:100px; color:var(--text-faint);">No prompts found matching your search.</div>';
+    $loader.style.display = 'none';
+    isLoading = false;
     return;
   }
 
-  $vBottom.style.height = filtered.length * CARD_H + 'px';
-  $vTop.style.height    = '0px';
-  renderVirtual();
-}
+  if (append) $loader.textContent = "Loading more...";
 
-$list.addEventListener('scroll', renderVirtual, { passive: true });
-window.addEventListener('resize', renderVirtual, { passive: true });
-
-// ─── Navigation ──────────────────────────────────────────────────
-function navigateTo(index) {
-  if (index < 0 || index >= filtered.length) return;
-  currentIndex = index;
-  openPrompt(filtered[index]);
-  // Scroll the list so the active card is in view
-  $list.scrollTop = Math.max(0, index * CARD_H - $list.clientHeight / 2 + CARD_H / 2);
-  // After scrollTop changes, renderVirtual will fire via scroll event
-}
-
-function updateNavButtons() {
-  const prev = document.getElementById('navPrev');
-  const next = document.getElementById('navNext');
-  const counter = document.getElementById('navCounter');
-  if (!prev) return;
-  prev.disabled = currentIndex <= 0;
-  next.disabled = currentIndex >= filtered.length - 1;
-  if (counter) counter.textContent = `${currentIndex + 1} / ${filtered.length.toLocaleString()}`;
-}
-
-// ─── Prompt detail ────────────────────────────────────────────
-function openPrompt(p) {
-  activeId = p.id;
-  rawViewMode = false;
-
-  // Update currentIndex if not already set by navigateTo
-  const idx = filtered.findIndex(x => x.id === p.id);
-  if (idx !== -1) currentIndex = idx;
-
-  document.querySelectorAll('.prompt-card').forEach(c => {
-    c.classList.toggle('active', c.dataset.id === p.id);
-  });
-
-  $empty.style.display = 'none';
-  $detail.style.display = 'block';
-  renderDetail(p);
-}
-
-function renderDetail(p) {
-  const args = extractArguments(p.content);
-  const argValues = {};
-  args.forEach(a => { argValues[a.name] = a.default; });
-
-  const date = p.publishedAt ? new Date(p.publishedAt).toLocaleString('en', {
-    month: 'long', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  }) : '';
-
-  let imagesHtml = '';
-  if (p.media.length > 0) {
-    imagesHtml = `
-      <div class="hero-images">
-        ${p.media.map(url => `<img class="img-hero" src="${escAttr(url)}" alt="Prompt reference image" loading="lazy" onerror="this.style.display='none'" />`).join('')}
-      </div>`;
-  }
-
-  let argsHtml = '';
-  if (args.length > 0) {
-    argsHtml = `
-      <div class="args-section">
-        <div class="section-label">Customize Prompt</div>
-        <div class="args-grid">
-          ${args.map(a => `
-            <div class="arg-item">
-              <label class="arg-label">
-                <span class="arg-name-pill">${escHtml(a.name)}</span>
-              </label>
-              <textarea class="arg-input" rows="2" data-arg="${escAttr(a.name)}" placeholder="${escAttr(a.default)}">${escHtml(a.default)}</textarea>
-            </div>`).join('')}
+  let index = 0;
+  function renderBatch() {
+    const batchSize = 20; // Increase for speed
+    const limit = Math.min(index + batchSize, chunk.length);
+    
+    for (; index < limit; index++) {
+      const p = chunk[index];
+      const card = document.createElement('div');
+      card.className = 'feed-card';
+      const thumb = p.media && p.media.length > 0 ? p.media[0] : '';
+      
+      card.innerHTML = `
+        ${thumb ? `<img src="${thumb}" alt="${escHtml(p.title)}" loading="lazy" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%25%22 height=%22100%25%22%3E%3Crect width=%22100%25%22 height=%22100%25%22 fill=%22%231a1a1a%22/%3E%3C/svg%3E';">` : '<div style="height:200px;display:flex;align-items:center;justify-content:center;font-size:2rem;opacity:0.2">🍌</div>'}
+        <div class="feed-overlay">
+          <h3 class="feed-card-title">${escHtml(p.title)}</h3>
+          <div class="author-badge">👤 ${escHtml(p.author.name || 'Anonymous')}</div>
         </div>
-      </div>`;
-  }
-
-  $detail.innerHTML = `
-    <div class="detail-header" style="border-bottom:none; padding-bottom:0; margin-bottom:16px;">
-      <div class="detail-id-row">
-        <div class="nav-controls">
-          <button class="nav-btn" id="navPrev" title="Previous prompt (←)">&#8592;</button>
-          <span class="nav-counter" id="navCounter"></span>
-          <button class="nav-btn" id="navNext" title="Next prompt (→)">&#8594;</button>
-        </div>
-        <span class="detail-id">#${p.id}</span>
-        ${p.sourceLink ? `<a class="detail-source-link" href="${escAttr(p.sourceLink)}" target="_blank" rel="noopener">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M5 2H2a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M8 1h3m0 0v3m0-3L5.5 6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Source
-        </a>` : ''}
-        ${date ? `<span class="meta-tag">${date}</span>` : ''}
-        <span class="kbd-hint"><span class="kbd">←</span><span class="kbd">→</span> navigate</span>
-      </div>
-      <div class="detail-meta" style="margin-top: 10px;">
-        ${p.author.name ? `<a class="author-chip" href="${escAttr(p.author.link || '#')}" target="_blank" rel="noopener">👤 ${escHtml(p.author.name)}</a>` : ''}
-        ${args.length ? `<span class="meta-tag">⚙ ${args.length} arguments</span>` : ''}
-      </div>
-    </div>
-
-    ${imagesHtml}
-    ${argsHtml}
-
-    <div class="prompt-section">
-      <div class="prompt-toolbar">
-        <div class="section-label" style="margin:0">Expanded Prompt</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="reset-btn" id="resetBtn">↺ Reset</button>
-        </div>
-      </div>
-      <div class="prompt-output" id="promptOutput"></div>
-      <div style="margin-top:8px;text-align:right">
-        <button class="raw-toggle" id="rawToggle">Show raw (with template tokens)</button>
-      </div>
-    </div>
-
-    <!-- Sticky floating copy button -->
-    <div style="position: sticky; bottom: 0px; padding: 16px 0 0 0; display: flex; justify-content: flex-end; pointer-events: none; z-index: 50;">
-      <button class="copy-btn" id="copyBtn" style="pointer-events: auto; box-shadow: 0 4px 24px rgba(0,0,0,0.8); padding: 12px 26px; font-size: 0.95rem; border-radius: 30px; letter-spacing: 0.2px;">
-        <svg width="15" height="15" viewBox="0 0 13 13" fill="none" style="margin-right: 6px;"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M3 9H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-        Copy Prompt
-      </button>
-    </div>
-  `;
-
-  renderOutput(p, argValues);
-  updateNavButtons();
-
-  // Prev / Next buttons
-  const btnPrev = document.getElementById('navPrev');
-  const btnNext = document.getElementById('navNext');
-  if (btnPrev) btnPrev.addEventListener('click', () => navigateTo(currentIndex - 1));
-  if (btnNext) btnNext.addEventListener('click', () => navigateTo(currentIndex + 1));
-
-  // Swipe on detail panel
-  let touchStartX = 0;
-  $detail.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true, once: true });
-  $detail.addEventListener('touchend', e => {
-    const dx = e.changedTouches[0].clientX - touchStartX;
-    if (Math.abs(dx) > 60) navigateTo(currentIndex + (dx < 0 ? 1 : -1));
-  }, { once: true });
-
-  $detail.querySelectorAll('.img-hero').forEach(img => {
-    img.addEventListener('click', () => openLightbox(img.src));
-  });
-
-  $detail.querySelectorAll('.arg-input').forEach(inp => {
-    inp.addEventListener('input', () => {
-      argValues[inp.dataset.arg] = inp.value;
-      renderOutput(p, argValues);
-    });
-  });
-
-  document.getElementById('resetBtn').addEventListener('click', () => {
-    args.forEach(a => { argValues[a.name] = a.default; });
-    $detail.querySelectorAll('.arg-input').forEach(inp => {
-      inp.value = argValues[inp.dataset.arg] || '';
-    });
-    renderOutput(p, argValues);
-    showToast('Arguments reset to defaults');
-  });
-
-  document.getElementById('copyBtn').addEventListener('click', () => {
-    const text = rawViewMode ? p.content : expandContent(p.content, argValues);
-    navigator.clipboard.writeText(text).then(() => {
-      const btn = document.getElementById('copyBtn');
-      btn.classList.add('copied');
-      btn.textContent = '✓ Copied!';
-      setTimeout(() => {
-        btn.classList.remove('copied');
-        btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M3 9H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg> Copy Prompt`;
-      }, 2000);
-      showToast('Prompt copied to clipboard!');
-    });
-  });
-
-  document.getElementById('rawToggle').addEventListener('click', () => {
-    rawViewMode = !rawViewMode;
-    renderOutput(p, argValues);
-    document.getElementById('rawToggle').textContent = rawViewMode
-      ? 'Show expanded (with values)' : 'Show raw (with template tokens)';
-  });
-}
-
-function renderOutput(p, values) {
-  const out = document.getElementById('promptOutput');
-  if (!out) return;
-  if (rawViewMode) {
-    out.innerHTML = escHtml(p.content).replace(
-      /\{argument\s+name="([^"]+)"\s+default="[^"]*"\}/g,
-      (match) => `<mark>${match}</mark>`
-    );
-  } else {
-    out.textContent = expandContent(p.content, values);
-  }
-}
-
-// ─── Lightbox ─────────────────────────────────────────────────
-let $lightbox, $lightboxImg;
-function ensureLightbox() {
-  if ($lightbox) return;
-  $lightbox = document.createElement('div');
-  $lightbox.className = 'lightbox';
-  $lightbox.innerHTML = `<button class="lightbox-close">✕</button><img src="" alt="Preview" />`;
-  document.body.appendChild($lightbox);
-  $lightboxImg = $lightbox.querySelector('img');
-  $lightbox.querySelector('.lightbox-close').addEventListener('click', closeLightbox);
-  $lightbox.addEventListener('click', e => { if (e.target === $lightbox) closeLightbox(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
-}
-function openLightbox(src) { ensureLightbox(); $lightboxImg.src = src; $lightbox.classList.add('open'); }
-function closeLightbox() { $lightbox?.classList.remove('open'); }
-
-// ─── Toast ────────────────────────────────────────────────────
-let toastTimer;
-function showToast(msg) {
-  $toast.textContent = msg;
-  $toast.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => $toast.classList.remove('show'), 2500);
-}
-
-// ─── Utilities ────────────────────────────────────────────────
-function escHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-function escAttr(str) { return escHtml(str); }
-
-// ─── Data loading ─────────────────────────────────────────────
-function loadData() {
-  // Path A: data.js pre-built
-  let attempts = 0;
-  const tryPrebuilt = setInterval(() => {
-    attempts++;
-    if (window.PROMPT_DATA && window.PROMPT_DATA.length > 0) {
-      clearInterval(tryPrebuilt);
-      ingestData(window.PROMPT_DATA);
-      return;
+      `;
+      
+      card.addEventListener('click', () => openDetail(p));
+      
+      // Use round-robin distribution for speed and stability
+      const colIndex = index % $cols.length;
+      $cols[colIndex].appendChild(card);
     }
-    if (attempts > 40) clearInterval(tryPrebuilt);
-  }, 100);
 
-  // Path B: FileReader fallback
-  const fileInput = document.getElementById('csvFileInput');
-  if (!fileInput) return;
 
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    document.getElementById('loader').innerHTML = `
-      <div class="loader-spinner"></div>
-      <p style="color:var(--text-muted);font-size:.85rem">Parsing ${file.name}…</p>
-      <p style="font-size:0.72rem;color:var(--text-faint);margin-top:4px">${(file.size/1024/1024).toFixed(1)} MB — please wait</p>`;
-
-    setTimeout(() => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try { ingestData(parseCSV(ev.target.result)); }
-        catch (err) {
-          document.getElementById('loader').innerHTML = `
-            <div style="text-align:center;padding:20px;color:var(--text-muted)">
-              <div style="font-size:1.5rem;margin-bottom:8px">⚠</div>
-              <strong>Parse error</strong><br>
-              <span style="font-size:.8rem">${err.message}</span>
-            </div>`;
-        }
-      };
-      reader.onerror = () => {
-        document.getElementById('loader').innerHTML =
-          '<div style="text-align:center;padding:20px;color:var(--text-muted)">Could not read file.</div>';
-      };
-      reader.readAsText(file, 'utf-8');
-    }, 50);
-  });
-}
-
-function ingestData(data) {
-  const $loader = document.getElementById('loader');
-  if ($loader) $loader.style.display = 'none';
-
-  let customPrompts = [];
-  try {
-    const saved = localStorage.getItem('nbp_custom_prompts');
-    if (saved) customPrompts = JSON.parse(saved);
-  } catch (e) {
-    console.error('Could not load custom prompts', e);
+    if (index < chunk.length) {
+      requestAnimationFrame(renderBatch);
+    } else {
+      if (end >= filtered.length) {
+        $loader.style.display = 'none';
+      } else {
+        $loader.style.display = 'block';
+        $loader.textContent = "Scroll for more...";
+      }
+      isLoading = false;
+    }
   }
 
-  // Prepend custom prompts so they show up first
-  allPrompts = [...customPrompts, ...data];
-  $total.textContent = allPrompts.length.toLocaleString('en');
+  requestAnimationFrame(renderBatch);
+}
 
-  const authorSet = new Set();
-  allPrompts.forEach(p => { if (p.author && p.author.name) authorSet.add(p.author.name); });
-  [...authorSet].sort().forEach(a => {
-    const opt = document.createElement('option');
-    opt.value = a; opt.textContent = a;
-    $author.appendChild(opt);
+
+
+
+
+// Search, Sort & Category
+function applyFilters() {
+
+  const query = $searchInput.value.toLowerCase().trim();
+  const cat = document.querySelector('.cat-tab.active').dataset.cat;
+  
+  filtered = allPrompts.filter(p => {
+    const mSearch = !query || 
+      p.title.toLowerCase().includes(query) || 
+      (p.description && p.description.toLowerCase().includes(query)) ||
+      p.content.toLowerCase().includes(query);
+    
+    // Categorization logic (Acts like a secondary search)
+    let mCat = true;
+    if (cat) {
+      const haystack = (p.title + ' ' + (p.description || '') + ' ' + p.content).toLowerCase();
+      const searchTerm = cat === 'social' ? 'social media' : cat;
+      mCat = haystack.includes(searchTerm);
+    }
+
+
+
+    return mSearch && mCat;
   });
 
-  filtered = [...allPrompts];
-  render();
-  showToast(`✓ Loaded ${allPrompts.length.toLocaleString()} prompts`);
+
+  sortPrompts();
+  renderFeed();
 }
 
-// ─── Keyboard navigation ─────────────────────────────────────
-document.addEventListener('keydown', (e) => {
-  // Don't capture when typing in inputs
-  if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
-  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'j') navigateTo(currentIndex + 1);
-  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp'   || e.key === 'k') navigateTo(currentIndex - 1);
+$searchInput.addEventListener('input', debounce(applyFilters, 300));
+$sortSelect.addEventListener('change', applyFilters);
+
+document.getElementById('categoryFilter').addEventListener('click', (e) => {
+  if (e.target.classList.contains('cat-tab')) {
+    document.querySelectorAll('.cat-tab').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    applyFilters();
+  }
 });
 
-// ─── Event listeners ──────────────────────────────────────────
-let searchTimer;
-$search.addEventListener('input', () => {
-  $clear.classList.toggle('visible', $search.value.length > 0);
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(applyFilters, 250);
-});
-$clear.addEventListener('click', () => {
-  $search.value = '';
-  $clear.classList.remove('visible');
-  applyFilters();
-  $search.focus();
-});
-$author.addEventListener('change', applyFilters);
-$sort.addEventListener('change', applyFilters);
-$hasImg.addEventListener('change', applyFilters);
-
-// ─── Modal & Form Logic ──────────────────────────────────────
-function openModal() {
-  $modal.style.display = 'flex';
-  document.getElementById('formTitle').focus();
+function sortPrompts() {
+  const val = $sortSelect.value;
+  if (val === 'newest') filtered.sort((a,b) => b.id - a.id);
+  else if (val === 'title') filtered.sort((a,b) => a.title.localeCompare(b.title));
+  else if (val === 'random') {
+    for (let i = filtered.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+    }
+  }
 }
+
+// Infinite scroll using IntersectionObserver (Better Tracking)
+const observer = new IntersectionObserver((entries) => {
+  if (entries[0].isIntersecting && !isLoading && page * perPage < filtered.length) {
+    page++;
+    renderFeed(true);
+  }
+}, { rootMargin: '800px' }); // Load early
+
+observer.observe($loader);
+
+let currentPromptIndex = -1;
+
+function openDetail(p) {
+  currentPromptIndex = filtered.findIndex(item => item.id === p.id);
+  $detailTitle.textContent = p.title;
+
+  $detailMeta.innerHTML = `<span class="author-chip">👤 ${escHtml(p.author.name)}</span> <span class="meta-tag">#${p.id}</span>`;
+  
+  const thumb = p.media && p.media.length > 0 ? p.media[0] : '';
+  $detailImage.innerHTML = thumb 
+    ? `<div class="feed-detail-left-bg" style="background-image:url('${thumb}')"></div><img src="${thumb}" alt="" />` 
+    : '<div style="font-size:5rem; opacity:0.1">🍌</div>';
+
+  
+  // 3. Prompt content (expandable if long)
+  const isLong = p.content.length > 500;
+  $detailContent.innerHTML = `
+    <div class="prompt-box ${isLong ? 'collapsed' : ''}" id="promptBox">${escHtml(p.content)}</div>
+    ${isLong ? '<button class="expand-btn" id="expandBtn">↓ Show Full Prompt</button>' : ''}
+  `;
+  
+  if (isLong) {
+    const box = document.getElementById('promptBox');
+    const btn = document.getElementById('expandBtn');
+    btn.onclick = () => {
+      box.classList.toggle('collapsed');
+      btn.textContent = box.classList.contains('collapsed') ? '↓ Show Full Prompt' : '↑ Collapse Prompt';
+    };
+  }
+
+  
+  $overlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  $copyBtn.onclick = () => {
+    navigator.clipboard.writeText(p.content);
+    const originalText = $copyBtn.textContent;
+    $copyBtn.textContent = '✓ Copied!';
+    setTimeout(() => { $copyBtn.textContent = originalText; }, 2000);
+  };
+}
+
+document.getElementById('closeDetail').addEventListener('click', closeModal);
+
+
+$overlay.addEventListener('click', (e) => {
+  if (e.target === $overlay) {
+    closeModal();
+  }
+});
 
 function closeModal() {
-  $modal.style.display = 'none';
-  $form.reset();
+  $overlay.style.display = 'none';
+  document.body.style.overflow = '';
+  currentPromptIndex = -1;
 }
 
-$newBtn.addEventListener('click', openModal);
-$closeBtn.addEventListener('click', closeModal);
-$cancelBtn.addEventListener('click', closeModal);
+// Keyboard Navigation
+window.addEventListener('keydown', (e) => {
+  if ($overlay.style.display !== 'flex') return;
 
-$modal.addEventListener('click', (e) => {
-  if (e.target === $modal) closeModal();
+  if (e.key === 'Escape') closeModal();
+  if (e.key === 'ArrowRight') navigate(1);
+  if (e.key === 'ArrowLeft') navigate(-1);
 });
 
-$form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  
-  const submitBtn = $form.querySelector('button[type="submit"]');
-  const originalText = submitBtn.textContent;
-  submitBtn.textContent = 'Sending...';
-  submitBtn.disabled = true;
-
-  const title = document.getElementById('formTitle').value.trim();
-  const desc = document.getElementById('formDesc').value.trim();
-  const content = document.getElementById('formContent').value.trim();
-  const authorName = document.getElementById('formAuthor').value.trim() || 'Community Member';
-  const authorLink = document.getElementById('formAuthorLink').value.trim();
-  const mediaStr = document.getElementById('formMedia').value.trim();
-  
-  let media = [];
-  if (mediaStr) {
-    media = mediaStr.split(',').map(s => s.trim()).filter(s => s.length > 0);
+function navigate(dir) {
+  if (currentPromptIndex === -1) return;
+  const newIndex = currentPromptIndex + dir;
+  if (newIndex >= 0 && newIndex < filtered.length) {
+    openDetail(filtered[newIndex]);
   }
-  
-  // Format as CSV for Juvaid to easily copy
-  // Columns: id,category,title,description,content,author,sourceLink,sourceMedia,sourcePublishedAt
-  const authorJson = JSON.stringify({ name: authorName, link: authorLink }).replace(/"/g, '""');
-  const mediaJson = media.length ? JSON.stringify(media).replace(/"/g, '""') : '[]';
-  const cleanStr = (s) => `"${s.replace(/"/g, '""')}"`;
-  
-  const csvRow = `${Date.now()},"Community",${cleanStr(title)},${cleanStr(desc)},${cleanStr(content)},"${authorJson}","", "${mediaJson}","${new Date().toISOString()}"`;
+}
 
-  // --- DISCORD WEBHOOK URL ---
-  // Sends prompts directly to the Juvaid Discord Server
-  const webhookUrl = "https://discord.com/api/webhooks/1499944698985578747/8JcyfYIABw0NEF45kBsJK2kGZJjpGJdhWBiZM4qVxFfabZEvnhbmpUFanL-OsGCcaP3F";
-  
-  // Only add URL if it looks like a valid http link to prevent Discord 400 errors
-  const isValidUrl = (url) => {
-    try { return Boolean(new URL(url)); }
-    catch(e){ return false; }
-  };
 
-  const payload = {
-    content: "🚀 **New Prompt Submission!**\n\nCopy this exact row and paste it at the bottom of your `nano-banana-pro-prompts.csv` file:\n```csv\n" + csvRow + "\n```",
-    embeds: [{
-      title: title || "Untitled Prompt",
-      description: desc ? desc + "\n\n**Prompt Template:**\n```json\n" + content + "\n```" : "**Prompt Template:**\n```json\n" + content + "\n```",
-      color: 16766464, // Yellow Banana color
-      author: {
-        name: authorName
-      }
-    }]
-  };
-  
-  if (authorLink && isValidUrl(authorLink)) {
-    payload.embeds[0].author.url = authorLink;
-  }
-  
-  if (media.length > 0 && isValidUrl(media[0])) {
-    payload.embeds[0].image = { url: media[0] };
-  }
+// Helpers
+function escHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
 
-  try {
-    if (webhookUrl === "REPLACE_ME_WITH_DISCORD_WEBHOOK_URL") {
-      console.warn("Discord Webhook URL not set! Simulating submission for testing.");
-      // Simulate network request for dev
-      await new Promise(r => setTimeout(r, 800));
-    } else {
-      const res = await fetch(webhookUrl, {
+function debounce(fn, ms) {
+  let t;
+  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+
+// Submission Modal Logic
+const $promptModal = document.getElementById('promptModal');
+const $newPromptBtn = document.getElementById('newPromptBtn');
+const $modalClose = document.getElementById('modalClose');
+const $modalCancel = document.getElementById('modalCancel');
+const $newPromptForm = document.getElementById('newPromptForm');
+const $toast = document.getElementById('toast');
+
+function openPromptModal() {
+  if (!$promptModal) return;
+  $promptModal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closePromptModal() {
+  if (!$promptModal) return;
+  $promptModal.style.display = 'none';
+  if ($overlay.style.display !== 'flex') document.body.style.overflow = '';
+  $newPromptForm.reset();
+}
+
+if ($newPromptBtn) $newPromptBtn.addEventListener('click', openPromptModal);
+if ($modalClose) $modalClose.addEventListener('click', closePromptModal);
+if ($modalCancel) $modalCancel.addEventListener('click', closePromptModal);
+
+if ($promptModal) {
+  $promptModal.addEventListener('click', (e) => {
+    if (e.target === $promptModal) closePromptModal();
+  });
+}
+
+function showToast(msg) {
+  if (!$toast) return;
+  $toast.textContent = msg;
+  $toast.classList.add('show');
+  setTimeout(() => $toast.classList.remove('show'), 3000);
+}
+
+if ($newPromptForm) {
+  $newPromptForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $newPromptForm.querySelector('button[type="submit"]');
+    const originalText = btn.textContent;
+    btn.textContent = 'Sending...';
+    btn.disabled = true;
+
+    const title = document.getElementById('formTitle').value.trim();
+    const desc = document.getElementById('formDesc').value.trim();
+    const content = document.getElementById('formContent').value.trim();
+    const authorName = document.getElementById('formAuthor').value.trim() || 'Community Member';
+    const authorLink = document.getElementById('formAuthorLink').value.trim();
+    const mediaStr = document.getElementById('formMedia').value.trim();
+
+    const csvRow = `${Date.now()},"Community","${title.replace(/"/g, '""')}","${desc.replace(/"/g, '""')}","${content.replace(/"/g, '""')}","${authorName.replace(/"/g, '""')}","${authorLink.replace(/"/g, '""')}","${mediaStr.replace(/"/g, '""')}","${new Date().toISOString()}"`;
+
+    const webhookUrl = "https://discord.com/api/webhooks/1499944698985578747/8JcyfYIABw0NEF45kBsJK2kGZJjpGJdhWBiZM4qVxFfabZEvnhbmpUFanL-OsGCcaP3F";
+    
+    try {
+      await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          content: "🚀 **New Prompt Submission!**\n```csv\n" + csvRow + "\n```",
+          embeds: [{
+            title: title,
+            description: desc + "\n\n**Content:**\n" + content,
+            color: 16766464,
+            author: { name: authorName, url: authorLink }
+          }]
+        })
       });
-      if (!res.ok) throw new Error('Network response was not ok');
+      closePromptModal();
+      showToast('✓ Submission successful!');
+    } catch (err) {
+      alert('Failed to send. Please try again.');
+    } finally {
+      btn.textContent = originalText;
+      btn.disabled = false;
     }
-    
-    closeModal();
-    showToast('✓ Prompt submitted for review!');
-  } catch (err) {
-    console.error('Webhook Error:', err);
-    alert('Failed to submit prompt. Please try again later.');
-  } finally {
-    submitBtn.textContent = originalText;
-    submitBtn.disabled = false;
-  }
-});
+  });
+}
 
-// ─── Boot ─────────────────────────────────────────────────────
-loadData();
+init();
+

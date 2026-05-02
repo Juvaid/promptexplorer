@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Juvaid Prompt Lib — Ultimate AI Prompt Explorer</title>
+  <meta name="description" content="Discover, search, and customize over 12,000 premium AI image prompts. Features a blazing fast virtual-scrolling interface, dynamic template arguments, and 1-click copy." />
+  <meta name="keywords" content="AI prompts, Midjourney, Stable Diffusion, DALL-E, prompt engineering, AI image generation, prompt templates, prompt explorer" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#121212" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Juvaid Prompt Lib — Ultimate AI Prompt Explorer" />
+  <meta property="og:description" content="Discover, search, and customize over 12,000 premium AI image prompts instantly. A blazingly fast library for AI artists." />
+  <meta property="og:image" content="https://ai.juvaid.in/og-image.jpg" />
+  <meta property="og:url" content="https://ai.juvaid.in/" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Juvaid Prompt Lib — Ultimate AI Prompt Explorer" />
+  <meta name="twitter:description" content="Discover, search, and customize over 12,000 premium AI image prompts instantly. A blazingly fast library for AI artists." />
+  <meta name="twitter:image" content="https://ai.juvaid.in/og-image.jpg" />
+
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://ai.juvaid.in/" />
+
+  <!-- Favicons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
+  <!-- Fonts & CSS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">🍌</span>
+        <div class="logo-text">
+          <span class="logo-title">Juvaid Prompt Lib</span>
+          <span class="logo-sub">Prompt Explorer</span>
+        </div>
+      </div>
+      <div class="search-wrap header-search">
+
+        <svg class="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M14 14L18 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search prompts..." autocomplete="off" />
+        <button class="search-clear" id="searchClear" title="Clear search" aria-label="Clear search">✕</button>
+      </div>
+
+      <div class="header-actions">
+        <button class="view-btn active" title="List View">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+        </button>
+        <a href="index.html" class="view-btn" title="Grid View">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+        </a>
+        <button class="btn btn-primary" id="newPromptBtn" style="padding: 6px 12px; font-size: 0.8rem; margin-left: 8px;">+ Submit</button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Search & Filters -->
+  <div class="toolbar">
+    <div class="filter-row">
+
+      <div class="cat-tabs" id="categoryFilter">
+        <button class="cat-tab active" data-cat="">All</button>
+        <button class="cat-tab" data-cat="product">Product</button>
+        <button class="cat-tab" data-cat="marketing">Marketing</button>
+        <button class="cat-tab" data-cat="youtube">YouTube</button>
+        <button class="cat-tab" data-cat="social">Social Media</button>
+        <button class="cat-tab" data-cat="creative">Creative</button>
+      </div>
+      <label class="toggle-label" title="Only show prompts with images">
+        <input type="checkbox" id="hasImagesFilter" />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      <select class="filter-select" id="sortSelect" style="margin-left: 10px; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 20px; padding: 4px 12px; font-size: 0.85rem; cursor: pointer;">
+        <option value="newest">Newest First</option>
+        <option value="random">Random Discovery</option>
+        <option value="title">A → Z</option>
+      </select>
+
+
+    </div>
+
+  </div>
+
+  <!-- Main layout -->
+  <div class="layout">
+    <!-- Prompt list -->
+    <aside class="sidebar">
+      <div class="sidebar-inner" id="promptList">
+        <div id="loader" class="file-picker-state">
+          <div class="loader-spinner" id="bootSpinner"></div>
+          <p style="color:var(--text-muted);font-size:.85rem">Loading data…</p>
+          <div id="pickerFallback" style="display:none;width:100%;text-align:center">
+            <div class="fp-icon">🍌</div>
+            <h3>First-time setup</h3>
+            <p>Run <code>node build.js</code> once to skip this step forever.<br>Or pick the CSV manually below.</p>
+            <label class="fp-btn" for="csvFileInput" style="margin-top:12px">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0-8L5 5m3-3l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="2" y="11" width="12" height="3" rx="1.5" stroke="currentColor" stroke-width="1.3"/></svg>
+              Choose CSV File
+            </label>
+            <input type="file" id="csvFileInput" accept=".csv" style="display:none" />
+          </div>
+        </div>
+        <!-- Virtual scroll spacers -->
+        <div id="vTop" style="height:0"></div>
+        <!-- cards rendered between vTop and vBottom by JS -->
+        <div id="vBottom" style="height:0"></div>
+      </div>
+    </aside>
+
+    <!-- Detail panel -->
+    <main class="detail-panel" id="detailPanel">
+      <div class="detail-empty" id="detailEmpty">
+        <div class="empty-icon">✦</div>
+        <h2>Select a prompt</h2>
+        <p>Browse the list on the left and click any prompt to explore it, customize its arguments, and copy the final text.</p>
+      </div>
+      <div class="detail-content" id="detailContent" style="display:none;">
+        <!-- Filled dynamically -->
+      </div>
+    </main>
+  </div>
+
+  <!-- Toast notification -->
+  <div class="toast" id="toast"></div>
+  <!-- New Prompt Modal -->
+  <div class="modal-overlay" id="promptModal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 style="font-size: 1.1rem; font-weight: 600;">Create New Prompt</h2>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+      <form id="newPromptForm" class="modal-form">
+        <div class="form-group">
+          <label>Title <span class="required">*</span></label>
+          <input type="text" id="formTitle" required placeholder="e.g. Cinematic Sci-Fi Portrait" />
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input type="text" id="formDesc" placeholder="Brief description of the prompt..." />
+        </div>
+        <div class="form-group">
+          <label>Prompt Template <span class="required">*</span></label>
+          <textarea id="formContent" rows="5" required placeholder='e.g. {"prompt": "A cinematic shot of [subject] in [location]"} - Supports JSON or plain text'></textarea>
+          <div class="form-hint">Use <code>[variable_name]</code> to create template arguments.</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Author Name</label>
+            <input type="text" id="formAuthor" placeholder="e.g. Jane Doe" />
+          </div>
+          <div class="form-group">
+            <label>Author Link</label>
+            <input type="url" id="formAuthorLink" placeholder="https://..." />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Source Media URLs</label>
+          <textarea id="formMedia" rows="2" placeholder="Comma-separated image URLs (e.g. https://img.com/1.jpg, https://img.com/2.png)"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn" id="modalCancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Prompt</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- Pre-built data (generated by: node build.js) -->
+  <!-- If data.js exists it sets window.PROMPT_DATA and app auto-loads -->
+  <script>
+    // Dynamically try to load data.js — works on file:// because <script> tags are not CORS-blocked
+    (function() {
+      var s = document.createElement('script');
+      s.src = 'data.js';
+      s.onload  = function() { /* app.js will detect window.PROMPT_DATA */ };
+      s.onerror = function() {
+        // data.js missing → show the manual file picker
+        document.getElementById('bootSpinner').style.display = 'none';
+        document.getElementById('pickerFallback').style.display = 'block';
+      };
+      document.head.appendChild(s);
+    })();
+  </script>
+  <script src="data.js"></script>
+  <script src="list.js"></script>
+</body>
+</html>
