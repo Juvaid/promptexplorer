@@ -384,16 +384,20 @@ function renderDetail(p) {
         <div class="section-label" style="margin:0">Expanded Prompt</div>
         <div style="display:flex;gap:8px;align-items:center">
           <button class="reset-btn" id="resetBtn">↺ Reset</button>
-          <button class="copy-btn" id="copyBtn">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M3 9H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-            Copy Prompt
-          </button>
         </div>
       </div>
       <div class="prompt-output" id="promptOutput"></div>
       <div style="margin-top:8px;text-align:right">
         <button class="raw-toggle" id="rawToggle">Show raw (with template tokens)</button>
       </div>
+    </div>
+
+    <!-- Sticky floating copy button -->
+    <div style="position: sticky; bottom: 0px; padding: 16px 0 0 0; display: flex; justify-content: flex-end; pointer-events: none; z-index: 50;">
+      <button class="copy-btn" id="copyBtn" style="pointer-events: auto; box-shadow: 0 4px 24px rgba(0,0,0,0.8); padding: 12px 26px; font-size: 0.95rem; border-radius: 30px; letter-spacing: 0.2px;">
+        <svg width="15" height="15" viewBox="0 0 13 13" fill="none" style="margin-right: 6px;"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M3 9H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Copy Prompt
+      </button>
     </div>
   `;
 
